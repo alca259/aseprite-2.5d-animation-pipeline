@@ -1,13 +1,13 @@
 --- NormalMap.lua
 --- Genera un mapa de normales (normal map) a partir del contorno alfa del
---- dibujo. Unifica en un solo panel, permitiendo elegir cualquier combinacion de
---- alcance (capas x fotogramas) y ajustar la intensidad del relieve.
+--- dibujo. Unifica en un solo panel todo, permitiendo elegir cualquier combinacion de
+--- alcance (capas x fotogramas) y ajustar la intensidad del relieve
 ---
 --- El resultado se escribe en una capa "<nombre>_NormalGenerated" por cada
---- capa de origen, reutilizandola si ya existe.
+--- capa de origen, reutilizandola si ya existe
 ---
---- Solo funciona en modo de color RGB.
---- MIT license (http://opensource.org/licenses/MIT)
+--- Solo funciona en modo de color RGB
+--- Originalmente este script era de alguien, pero no lo recuerdo y no lo encuentro en internet, así que lo he modificado y adaptado para mi uso personal
 
 local SUFFIX = "_NormalGenerated"
 
@@ -181,7 +181,8 @@ local function resolveFrames(spr, framesOption)
     return { active }
 end
 
--- Generacion
+-- Generacion del mapa de normales
+
 ---Reutiliza o crea la capa de salida "<nombre>_NormalGenerated".
 local function getOrCreateNormalLayer(spr, srcLayer)
     local name = srcLayer.name .. SUFFIX
