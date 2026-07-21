@@ -11,13 +11,70 @@
 
 local SUFFIX = "_NormalGenerated"
 
--- Opciones del dialogo (cadenas visibles en castellano).
-local LAYERS_ACTIVE = "Capa activa"
-local LAYERS_RANGE = "Capas seleccionadas (rango)"
-local LAYERS_ALL = "Todas las capas"
+-- Diccionario de traducciones integradas (en = idioma fuente / fallback).
+local LOCALIZATION = {
+    en = {
+        title = "Generate Normal Map",
+        scope_sep = "Scope",
+        layers = "Layers",
+        frames = "Frames",
+        layer_active = "Active layer",
+        layer_range = "Selected layers (range)",
+        layer_all = "All layers",
+        frame_current = "Current frame",
+        frame_all = "All frames",
+        relief_sep = "Relief",
+        intensity = "Relief intensity",
+        confirm_sep = "Confirm",
+        accept = "OK",
+        cancel = "Cancel",
+        err_api = "This script requires Aseprite v1.2.10-beta3 or superior.",
+        err_sprite = "There is no active sprite.",
+        err_rgb = "This script only works with RGB color mode.",
+        err_cel = "There is no active image.",
+        err_scope = "No valid image layer found in the chosen scope."
+    },
+    es = {
+        title = "Generar mapa de normales",
+        scope_sep = "Sobre qué se aplica",
+        layers = "Capas",
+        frames = "Fotogramas",
+        layer_active = "Capa activa",
+        layer_range = "Capas seleccionadas (rango)",
+        layer_all = "Todas las capas",
+        frame_current = "Fotograma actual",
+        frame_all = "Todos los fotogramas",
+        relief_sep = "Relieve",
+        intensity = "Intensidad del relieve",
+        confirm_sep = "Confirmar",
+        accept = "Aceptar",
+        cancel = "Cancelar",
+        err_api = "Este script requiere Aseprite v1.2.10-beta3 o superior.",
+        err_sprite = "No hay ningún sprite abierto.",
+        err_rgb = "Este script solo funciona en modo de color RGB.",
+        err_cel = "No hay ninguna imagen activa.",
+        err_scope = "No hay ninguna capa de imagen válida en el alcance elegido."
+    }
+}
 
-local FRAMES_CURRENT = "Fotograma actual"
-local FRAMES_ALL = "Todos los fotogramas"
+-- Detección del idioma de Aseprite (best-effort; fallback a inglés).
+-- Normaliza "es-ES"/"es_ES" -> "es".
+local userLang = "en"
+local ok, pref = pcall(function() return app.preferences.general.language end)
+if ok and type(pref) == "string" and pref ~= "" then
+    userLang = pref:lower():gsub("[_-].*$", "")
+end
+if not LOCALIZATION[userLang] then userLang = "en" end
+local L = LOCALIZATION[userLang]
+
+-- Opciones del combobox: valen a la vez de etiqueta visible y de valor de
+-- comparación en resolveLayers/resolveFrames (consistentes en cada ejecución).
+local LAYERS_ACTIVE = L.layer_active
+local LAYERS_RANGE = L.layer_range
+local LAYERS_ALL = L.layer_all
+
+local FRAMES_CURRENT = L.frame_current
+local FRAMES_ALL = L.frame_all
 
 -- Algoritmo del mapa de normales
 
@@ -131,7 +188,7 @@ end
 
 -- Resolucion de capas y fotogramas segun el alcance elegido
 
----Aplana recursivamente las capas de imagen (salta grupos y salidas generadas)
+---Aplana recursivamente las capas de imagen (salta grupos y salidas generadas).
 local function collectImageLayers(layers, out)
     for _, layer in ipairs(layers) do
         if layer.isGroup then
@@ -143,7 +200,7 @@ local function collectImageLayers(layers, out)
     return out
 end
 
----Devuelve la lista de capas origen segun la opcion del dialogo
+---Devuelve la lista de capas origen segun la opcion del dialogo.
 local function resolveLayers(spr, layersOption)
     if layersOption == LAYERS_ALL then
         return collectImageLayers(spr.layers, {})
@@ -157,10 +214,10 @@ local function resolveLayers(spr, layersOption)
         if #result > 0 then
             return result
         end
-        -- Sin seleccion de rango: caer a la capa activa
+        -- Sin seleccion de rango: caer a la capa activa.
     end
 
-    -- LAYERS_ACTIVE (o fallback del rango vacio)
+    -- LAYERS_ACTIVE (o fallback del rango vacio).
     local active = app.activeLayer
     if active and not active.isGroup and not isGeneratedLayer(active) then
         return { active }
@@ -168,7 +225,7 @@ local function resolveLayers(spr, layersOption)
     return {}
 end
 
----Devuelve la lista de numeros de fotograma segun la opcion del dialogo
+---Devuelve la lista de numeros de fotograma segun la opcion del dialogo.
 local function resolveFrames(spr, framesOption)
     if framesOption == FRAMES_ALL then
         local frames = {}
@@ -199,28 +256,28 @@ end
 -- Dialogo
 
 local function handleDialogInput()
-    local dlg = Dialog { title = "Generar mapa de normales" }
+    local dlg = Dialog { title = L.title }
 
-    dlg:separator { id = "sepScope", text = "Sobre que se aplica" }
+    dlg:separator { id = "sepScope", text = L.scope_sep }
     dlg:combobox {
         id = "layers",
-        label = "Capas",
+        label = L.layers,
         option = LAYERS_ACTIVE,
         options = { LAYERS_ACTIVE, LAYERS_RANGE, LAYERS_ALL }
     }
     dlg:combobox {
         id = "frames",
-        label = "Fotogramas",
+        label = L.frames,
         option = FRAMES_CURRENT,
         options = { FRAMES_CURRENT, FRAMES_ALL }
     }
 
-    dlg:separator { id = "sepRelief", text = "Relieve" }
-    dlg:slider { id = "intensity", label = "Intensidad del relieve", min = 1, max = 63, value = 32 }
+    dlg:separator { id = "sepRelief", text = L.relief_sep }
+    dlg:slider { id = "intensity", label = L.intensity, min = 1, max = 63, value = 32 }
 
-    dlg:separator { id = "sepConfirm", text = "Confirmar" }
-    dlg:button { id = "confirm", text = "Aceptar" }
-    dlg:button { id = "cancel", text = "Cancelar" }
+    dlg:separator { id = "sepConfirm", text = L.confirm_sep }
+    dlg:button { id = "confirm", text = L.accept }
+    dlg:button { id = "cancel", text = L.cancel }
 
     dlg:show()
     return dlg.data
@@ -228,18 +285,18 @@ end
 
 local function main()
     if app.apiVersion < 1 then
-        return app.alert("Este script requiere Aseprite v1.2.10-beta3 o superior.")
+        return app.alert(L.err_api)
     end
 
     local spr = app.activeSprite
     if not spr then
-        return app.alert("No hay ningun sprite abierto.")
+        return app.alert(L.err_sprite)
     end
     if spr.colorMode ~= ColorMode.RGB then
-        return app.alert("Este script solo funciona en modo de color RGB.")
+        return app.alert(L.err_rgb)
     end
     if not app.activeCel then
-        return app.alert("No hay ninguna imagen activa.")
+        return app.alert(L.err_cel)
     end
 
     local data = handleDialogInput()
@@ -249,7 +306,7 @@ local function main()
 
     local layers = resolveLayers(spr, data.layers)
     if #layers == 0 then
-        return app.alert("No hay ninguna capa de imagen valida en el alcance elegido.")
+        return app.alert(L.err_scope)
     end
 
     local frames = resolveFrames(spr, data.frames)
