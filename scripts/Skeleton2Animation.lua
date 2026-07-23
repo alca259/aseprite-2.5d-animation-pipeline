@@ -68,6 +68,10 @@ local LOCALIZATION = {
         reparent = "Reparent",
         reparent_title = "New parent for '%s'",
         parent_label = "Parent",
+        grp_bones = "Bones / skeleton",
+        grp_skin = "Skin / layers",
+        grp_anim = "Animation / pose",
+        grp_file = "File",
         err_no_layers = "No image layers to detect",
         move_node = "Move node",
         move_bone_only = "Move bone only",
@@ -136,6 +140,10 @@ local LOCALIZATION = {
         reparent = "Reparentar",
         reparent_title = "Nuevo padre de '%s'",
         parent_label = "Padre",
+        grp_bones = "Huesos / esqueleto",
+        grp_skin = "Piel / capas",
+        grp_anim = "Animación / pose",
+        grp_file = "Archivo",
         err_no_layers = "No hay capas de imagen que detectar",
         move_node = "Mover nodo",
         move_bone_only = "Mover solo hueso",
@@ -315,7 +323,9 @@ local function process_node(node,sk_node)
   if node.children then
     for _, child in ipairs(node.children) do
        local depth = sk_node.depth + 1
-       local newSknode = { name=child.name,x=child.x,y=child.y,bx=child.bx,by=child.by,bcx=0,bcy=0,children = {},index=1 ,parent=sk_node, depth=depth,image=nil,rotate = 0,offset_x = 0,offset_y = 0}
+       -- Respetar rotate/offset guardados en el .json (bcx/bcy se reconstruyen
+       -- luego con rebindAllByName desde las capas homónimas).
+       local newSknode = { name=child.name,x=child.x,y=child.y,bx=child.bx,by=child.by,bcx=0,bcy=0,children = {},index=1 ,parent=sk_node, depth=depth,image=nil,rotate = child.rotate or 0,offset_x = child.offset_x or 0,offset_y = child.offset_y or 0}
        table.insert(sk_node.children, newSknode)
 	   sk_node.index = sk_node.index+1
 	   process_node(child,newSknode)
@@ -600,6 +610,23 @@ local function findNodeByName(node, name)
 		if found then return found end
 	end
 	return nil
+end
+
+-- Revincula (por nombre) la imagen fuente y la posición del cel de cada hueso
+-- desde su capa homónima. El vínculo es de tiempo de ejecución y NO se guarda en
+-- el .json; pero como el match hueso<->capa es por nombre, al cargar una pose
+-- podemos reconstruirlo automáticamente sin re-vincular a mano.
+local function rebindAllByName(node)
+	local layer = findLayerByName(bone_sprite, node.name)
+	if layer and layer.isImage and layer.name ~= sk_layer_name then
+		local cel = layer:cel(1)
+		if cel and cel.image then
+			node.image = cel.image:clone()
+			node.bcx = cel.position.x
+			node.bcy = cel.position.y
+		end
+	end
+	for _, child in ipairs(node.children) do rebindAllByName(child) end
 end
 
 -- Vincula la capa activa (completa) al hueso seleccionado, renombrando el hueso
@@ -1604,7 +1631,7 @@ local function open_file_dialog()
             end
             local root = read_json_file(filepath)
 		    if root then
-				   skeleton_tree = {name=root.name,x=root.x,y=root.y,bx=root.bx,by=root.by,bcx=0,bcy=0,children={},index = 1,parent=nil,depth=1,image=nil,rotate = 0,offset_x=0,offset_y=0}
+				   skeleton_tree = {name=root.name,x=root.x,y=root.y,bx=root.bx,by=root.by,bcx=0,bcy=0,children={},index = 1,parent=nil,depth=1,image=nil,rotate = root.rotate or 0,offset_x=root.offset_x or 0,offset_y=root.offset_y or 0}
 	               process_node(root,skeleton_tree)
 		           dlg:repaint()
 		           dlg:repaint()
@@ -1614,6 +1641,9 @@ local function open_file_dialog()
 		           selected_size.height = math.floor(root.sprite_height)
 				   selected_size.label = selected_size.width .. "x" .. selected_size.height
 		           ensureSkeleton()
+		           -- Re-vincular automáticamente cada hueso con su capa homónima
+		           -- (imagen fuente + posición del cel no se guardan en el .json).
+		           rebindAllByName(skeleton_tree)
 	               local image = bone_layer:cel(1).image
 	               image:clear()
                    drawNodeTree(skeleton_tree)
@@ -1679,6 +1709,8 @@ function createDiaglog()
 	-- El estado (modo actual, tamaño, nodo seleccionado) se dibuja dentro del
 	-- canvas, no en labels: cambiar el texto de un label reajustaba el ancho del
 	-- diálogo y hacía que Aseprite lo redimensionara y recolocara.
+	-- === Grupo: Huesos / esqueleto (creación y estructura) ===
+	dlg:separator{ text = L.grp_bones }
 	dlg:entry{id="BoneName",label=L.bone_name}
 	dlg:button{id="label", text=" + ", onclick=function()
 	                                        addBoneNode()
@@ -1687,15 +1719,7 @@ function createDiaglog()
 	dlg:button{id="delete_done", text=" - ", onclick=function() rmBoneChildNode()
 	                                        UpdateState(state_Add_bone_skin)
 	                                        end}
-	dlg:button{id="bind", text=L.bind_skin, onclick=function()
-	                             add_skin_layer(selected_node.name)
-								 UpdateState(state_Add_bone_skin)
-								 --moveSkLayer2Top()
-								 end }
-	dlg:button{id="bindLayer", text=L.bind_layer, onclick=function()
-	                             bind_existing_layer()
-								 UpdateState(state_Add_bone_skin)
-								 end }
+	dlg:newrow()
 	dlg:button{id="autodetect", text=L.autodetect, onclick=function()
 	                             autodetect_bones()
 								 UpdateState(state_Add_bone_skin)
@@ -1730,6 +1754,21 @@ function createDiaglog()
 			reDlg:button{id="cancel", text=L.cancel, onclick=function() reDlg:close() end}
 			reDlg:show()
 			end }
+
+	-- === Grupo: Piel / capas (vinculación hueso<->capa) ===
+	dlg:separator{ text = L.grp_skin }
+	dlg:button{id="bind", text=L.bind_skin, onclick=function()
+	                             add_skin_layer(selected_node.name)
+								 UpdateState(state_Add_bone_skin)
+								 --moveSkLayer2Top()
+								 end }
+	dlg:button{id="bindLayer", text=L.bind_layer, onclick=function()
+	                             bind_existing_layer()
+								 UpdateState(state_Add_bone_skin)
+								 end }
+
+	-- === Grupo: Animación / pose ===
+	dlg:separator{ text = L.grp_anim }
 	dlg:button{id="editPose", text=L.move_node, onclick=function()
 	            withSkin = true
 	            UpdateState(state_pose)
@@ -1853,8 +1892,9 @@ dlg:separator()
 
 	dlg:radio{ label=L.algorithm, id = "nearestNeighbor",selected = true,text=L.nearest }
 	   :radio{ id = "bilinear",  text=L.bilinear }
-	dlg:separator()
-	
+
+	-- === Grupo: Archivo ===
+	dlg:separator{ text = L.grp_file }
 	dlg:button{id="load", text=L.load ,onclick=function()
 	   open_file_dialog()
 	   end}
