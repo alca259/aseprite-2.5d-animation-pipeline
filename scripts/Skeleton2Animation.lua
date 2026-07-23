@@ -72,6 +72,7 @@ local LOCALIZATION = {
         grp_skin = "Skin / layers",
         grp_anim = "Animation / pose",
         grp_file = "File",
+        restore_rest = "Restore rest pose",
         err_no_layers = "No image layers to detect",
         move_node = "Move node",
         move_bone_only = "Move bone only",
@@ -144,6 +145,7 @@ local LOCALIZATION = {
         grp_skin = "Piel / capas",
         grp_anim = "Animación / pose",
         grp_file = "Archivo",
+        restore_rest = "Restaurar pose base",
         err_no_layers = "No hay capas de imagen que detectar",
         move_node = "Mover nodo",
         move_bone_only = "Mover solo hueso",
@@ -252,6 +254,15 @@ function findLayerByName(spr, name)
 	return nil
 end
 
+-- Guarda el estado "en reposo" (bind pose) de un hueso: posición del hueso y del
+-- cel de su piel, para poder restaurarlo luego con "Restaurar pose base".
+function captureRest(node, celx, cely)
+	node.rest_x = node.x
+	node.rest_y = node.y
+	node.rest_cx = celx
+	node.rest_cy = cely
+end
+
 local function read_json_file(path)
   local file = io.open(path, "r")
   if not file then
@@ -325,7 +336,7 @@ local function process_node(node,sk_node)
        local depth = sk_node.depth + 1
        -- Respetar rotate/offset guardados en el .json (bcx/bcy se reconstruyen
        -- luego con rebindAllByName desde las capas homónimas).
-       local newSknode = { name=child.name,x=child.x,y=child.y,bx=child.bx,by=child.by,bcx=0,bcy=0,children = {},index=1 ,parent=sk_node, depth=depth,image=nil,rotate = child.rotate or 0,offset_x = child.offset_x or 0,offset_y = child.offset_y or 0}
+       local newSknode = { name=child.name,x=child.x,y=child.y,bx=child.bx,by=child.by,bcx=0,bcy=0,children = {},index=1 ,parent=sk_node, depth=depth,image=nil,rotate = child.rotate or 0,offset_x = child.offset_x or 0,offset_y = child.offset_y or 0,rest_x = child.rest_x,rest_y = child.rest_y,rest_cx = child.rest_cx,rest_cy = child.rest_cy}
        table.insert(sk_node.children, newSknode)
 	   sk_node.index = sk_node.index+1
 	   process_node(child,newSknode)
@@ -356,6 +367,11 @@ function node_to_json_pretty(node, level)
   table.insert(lines, indent(level + 1) .. '"rotate": '.. node.rotate..',')
   table.insert(lines, indent(level + 1) .. '"offset_x": '..node.offset_x..',')
   table.insert(lines, indent(level + 1) .. '"offset_y": '..node.offset_y..',')
+  -- Pose base (reposo): posición del hueso y del cel de su piel.
+  table.insert(lines, indent(level + 1) .. '"rest_x": '..(node.rest_x or node.x)..',')
+  table.insert(lines, indent(level + 1) .. '"rest_y": '..(node.rest_y or node.y)..',')
+  table.insert(lines, indent(level + 1) .. '"rest_cx": '..(node.rest_cx or node.bcx)..',')
+  table.insert(lines, indent(level + 1) .. '"rest_cy": '..(node.rest_cy or node.bcy)..',')
   table.insert(lines, indent(level + 1) .. '"children": [')
 
   for i, child in ipairs(node.children) do
@@ -559,6 +575,7 @@ local function add_skin_layer(skinLayer_name)
 	skin_cel.position= Point(bounds.x, bounds.y)
 	selected_node.bcx =  selected_node.x
 	selected_node.bcy =  selected_node.y
+	captureRest(selected_node, bounds.x, bounds.y)
 	moveSkLayer2Top()
 	app.refresh()
 end
@@ -624,9 +641,44 @@ local function rebindAllByName(node)
 			node.image = cel.image:clone()
 			node.bcx = cel.position.x
 			node.bcy = cel.position.y
+			-- Si el fichero no traía pose base (ficheros antiguos), tomar el
+			-- estado cargado como reposo.
+			if node.rest_cx == nil then
+				node.rest_cx = cel.position.x
+				node.rest_cy = cel.position.y
+			end
+			if node.rest_x == nil then
+				node.rest_x = node.x
+				node.rest_y = node.y
+			end
 		end
 	end
 	for _, child in ipairs(node.children) do rebindAllByName(child) end
+end
+
+-- Restaura el árbol a su pose base: repone la imagen fuente sin rotar en la
+-- posición original de cada cel, resetea posiciones de hueso y rotación a 0.
+local function restoreRest(node)
+	if node.image and node.rest_cx ~= nil then
+		local layer = findLayerByName(bone_sprite, node.name)
+		if layer then
+			local cel = layer:cel(1)
+			if cel then
+				cel.image = node.image:clone()
+				cel.position = Point(node.rest_cx, node.rest_cy)
+			end
+		end
+	end
+	if node.rest_x ~= nil then
+		node.x = node.rest_x
+		node.y = node.rest_y
+		node.bx = node.rest_x
+		node.by = node.rest_y
+		node.bcx = node.rest_cx or node.bcx
+		node.bcy = node.rest_cy or node.bcy
+	end
+	node.rotate = 0
+	for _, child in ipairs(node.children) do restoreRest(child) end
 end
 
 -- Vincula la capa activa (completa) al hueso seleccionado, renombrando el hueso
@@ -656,6 +708,7 @@ local function bind_existing_layer()
 	selected_node.image = cel.image:clone()
 	selected_node.bcx = cel.position.x
 	selected_node.bcy = cel.position.y
+	captureRest(selected_node, cel.position.x, cel.position.y)
 	moveSkLayer2Top()
 	local image = bone_layer:cel(1).image
 	image:clear()
@@ -684,6 +737,7 @@ local function autodetect_bones()
 					node.image = cel.image:clone()
 					node.bcx = cel.position.x
 					node.bcy = cel.position.y
+					captureRest(node, cel.position.x, cel.position.y)
 				end
 				created = created + 1
 			end
@@ -1631,7 +1685,7 @@ local function open_file_dialog()
             end
             local root = read_json_file(filepath)
 		    if root then
-				   skeleton_tree = {name=root.name,x=root.x,y=root.y,bx=root.bx,by=root.by,bcx=0,bcy=0,children={},index = 1,parent=nil,depth=1,image=nil,rotate = root.rotate or 0,offset_x=root.offset_x or 0,offset_y=root.offset_y or 0}
+				   skeleton_tree = {name=root.name,x=root.x,y=root.y,bx=root.bx,by=root.by,bcx=0,bcy=0,children={},index = 1,parent=nil,depth=1,image=nil,rotate = root.rotate or 0,offset_x=root.offset_x or 0,offset_y=root.offset_y or 0,rest_x = root.rest_x,rest_y = root.rest_y,rest_cx = root.rest_cx,rest_cy = root.rest_cy}
 	               process_node(root,skeleton_tree)
 		           dlg:repaint()
 		           dlg:repaint()
@@ -1779,6 +1833,25 @@ function createDiaglog()
 	            UpdateState(state_offset)
 				edit_start()
 				end}
+	dlg:button{id="restoreRest", text=L.restore_rest, onclick=function()
+				if cur_state == state_pose or cur_state == state_offset then
+					edit_stop()
+				end
+				ensureSkeleton()
+				cur_state = state_Add_bone_skin
+				last_rotate_value = 0
+				app.transaction(function() restoreRest(skeleton_tree) end)
+				dlg:modify{id="rotator", value = 0}
+				if selected_node then
+					dlg:modify{id="pos_x", value = selected_node.x}
+					dlg:modify{id="pos_y", value = selected_node.y}
+				end
+				local image = bone_layer:cel(1).image
+				image:clear()
+				drawNodeTree(skeleton_tree)
+				dlg:repaint()
+				app.refresh()
+				end}
 
 	dlg:slider { id = "pos_x",
             label = L.pos_xy,
@@ -1858,8 +1931,8 @@ function createDiaglog()
 dlg:separator()  
 	dlg_canvas = dlg:canvas{
 		id = "skeleton_canvas",
-		width = 300,
-		height = 400,
+		width = 260,
+		height = 240,
 		autoScaling = true,
 		onpaint = function(ev)
 			node_positions = {}
