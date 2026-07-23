@@ -1,5 +1,7 @@
 # 🚀 Aseprite 2.5D Animation Pipeline
 
+> 🌐 _**Español** · [English](README-EN.md)_
+
 Tres scripts de **Lua puro para Aseprite** (sin dependencias, sin compilar nada) para animar sprites y prepararlos para iluminación dinámica en motores como Godot, Unity o Defold.
 
 - 🧬 **Skeleton2Animation** — anima por huesos (esqueleto jerárquico).
