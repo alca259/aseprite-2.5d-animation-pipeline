@@ -1598,6 +1598,12 @@ function UpdateState(stateName)
 		   edit_stop()
 		end
 		cur_state = stateName
+		-- Ocultar el overlay de huesos (capa BoneTree) mientras se rota: estorba
+		-- para ver la piel que estás animando. Se vuelve a mostrar al salir del
+		-- modo rotación (al seleccionar un hueso o cambiar de modo).
+		if bone_layer then
+			bone_layer.isVisible = (stateName ~= state_rotate)
+		end
 		if dlg then dlg:repaint() end
 	end
 end
@@ -1667,6 +1673,7 @@ local function createFrame()
         end
     end
     if bone_layer and bone_layer:cel(1) then
+        bone_layer.isVisible = true
         local image = bone_layer:cel(1).image
         image:clear()
         drawNodeTree(skeleton_tree)
@@ -1864,6 +1871,7 @@ function createDiaglog()
 					dlg:modify{id="pos_x", value = selected_node.x}
 					dlg:modify{id="pos_y", value = selected_node.y}
 				end
+				if bone_layer then bone_layer.isVisible = true end
 				local image = bone_layer:cel(1).image
 				image:clear()
 				drawNodeTree(skeleton_tree)
