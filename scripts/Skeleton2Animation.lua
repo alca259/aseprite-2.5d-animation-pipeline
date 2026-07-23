@@ -1653,7 +1653,25 @@ local function createFrame()
 		  end
 	    end
 	    end
+	    -- La pose se ha copiado al frame nuevo; el frame 1 vuelve a la pose base
+	    -- para poder componer el siguiente fotograma desde el reposo.
+	    restoreRest(skeleton_tree)
     end)
+    -- Reset de sliders/estado a la pose base.
+    last_rotate_value = 0
+    if dlg then
+        dlg:modify{id="rotator", value = 0}
+        if selected_node then
+            dlg:modify{id="pos_x", value = selected_node.x}
+            dlg:modify{id="pos_y", value = selected_node.y}
+        end
+    end
+    if bone_layer and bone_layer:cel(1) then
+        local image = bone_layer:cel(1).image
+        image:clear()
+        drawNodeTree(skeleton_tree)
+    end
+    if dlg then dlg:repaint() end
     app.refresh()
 
 end
