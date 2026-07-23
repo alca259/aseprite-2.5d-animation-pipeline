@@ -1,6 +1,6 @@
 --- Skeleton2Animation.lua
 --- animaciones de huesos 2d para Aseprite
---- Originalmente este script era de alguien, pero no lo recuerdo y no lo encuentro en internet, así que lo he modificado y adaptado para mi uso personal
+--- Originalmente este script era de aimarzhang, pero lo he modificado y adaptado para mi uso personal
 --- MIT license (http://opensource.org/licenses/MIT)
 
 local dlg 
@@ -63,6 +63,12 @@ local LOCALIZATION = {
         state_lbl = "State:",
         point_none = "None",
         bind_skin = "Bind skin",
+        bind_layer = "Bind layer",
+        autodetect = "Auto-detect bones",
+        reparent = "Reparent",
+        reparent_title = "New parent for '%s'",
+        parent_label = "Parent",
+        err_no_layers = "No image layers to detect",
         move_node = "Move node",
         move_bone_only = "Move bone only",
         pos_xy = "Position X:Y",
@@ -125,6 +131,12 @@ local LOCALIZATION = {
         state_lbl = "Estado:",
         point_none = "Ninguno",
         bind_skin = "Vincular piel",
+        bind_layer = "Vincular capa",
+        autodetect = "Autodetectar huesos",
+        reparent = "Reparentar",
+        reparent_title = "Nuevo padre de '%s'",
+        parent_label = "Padre",
+        err_no_layers = "No hay capas de imagen que detectar",
         move_node = "Mover nodo",
         move_bone_only = "Mover solo hueso",
         pos_xy = "Posición X:Y",
@@ -390,6 +402,21 @@ local function create_skeleton_sprite()
 		bone_sprite:newCel(bone_layer, 1)
 	end
 end
+
+-- Crea la capa/cel del esqueleto bajo demanda (una sola vez) y en una
+-- transacción, para que abrir la ventana no modifique el sprite hasta que el
+-- usuario ejecute una acción real.
+local function ensureSkeleton()
+	if bone_layer ~= nil then return end
+	if app.activeSprite == nil then
+		-- No hay sprite: hay que crearlo fuera de transacción.
+		create_skeleton_sprite()
+	else
+		-- Sobre un sprite existente, agrupar la creación de capa/cel en un solo
+		-- paso deshacible.
+		app.transaction(function() create_skeleton_sprite() end)
+	end
+end
 local function moveSkLayer2Top()
 	if bone_sprite == nil then
 	   app.alert(L.err_no_sprite)
@@ -442,6 +469,7 @@ local function getSkeletonHierarchy()
 end
 
 local function add_skin_layer(skinLayer_name)
+	ensureSkeleton()
 	local src_spr = app.activeSprite
 	local src_cel = app.cel
 	-- La capa activa debe ser una capa de imagen válida como origen (no un
@@ -526,6 +554,126 @@ local function add_skin_layer(skinLayer_name)
 end
 
 
+-- Recalcula la profundidad de un nodo y su subárbol tras un reparentado.
+local function updateDepth(node)
+	node.depth = node.parent and (node.parent.depth + 1) or 1
+	for _, c in ipairs(node.children) do updateDepth(c) end
+end
+
+-- ¿'maybe' está dentro del subárbol de 'node' (incluido el propio 'node')?
+local function isInSubtree(node, maybe)
+	if node == maybe then return true end
+	for _, c in ipairs(node.children) do
+		if isInSubtree(c, maybe) then return true end
+	end
+	return false
+end
+
+-- Cambia el padre de 'node' a 'newParent' (evita raíz y ciclos).
+local function reparentNode(node, newParent)
+	if node.parent == nil then return end            -- la raíz no se mueve
+	if isInSubtree(node, newParent) then return end  -- evita ciclos
+	for i, c in ipairs(node.parent.children) do
+		if c == node then table.remove(node.parent.children, i); break end
+	end
+	node.parent = newParent
+	table.insert(newParent.children, node)
+	updateDepth(node)
+end
+
+-- Reúne los nombres de nodos que pueden ser padre de 'exclude'
+-- (todos menos 'exclude' y sus descendientes).
+local function collectParentCandidates(node, exclude, out)
+	if not isInSubtree(exclude, node) then
+		table.insert(out, node.name)
+	end
+	for _, child in ipairs(node.children) do
+		collectParentCandidates(child, exclude, out)
+	end
+end
+
+-- Busca un nodo por nombre en el árbol (primero que coincida).
+local function findNodeByName(node, name)
+	if node.name == name then return node end
+	for _, child in ipairs(node.children) do
+		local found = findNodeByName(child, name)
+		if found then return found end
+	end
+	return nil
+end
+
+-- Vincula la capa activa (completa) al hueso seleccionado, renombrando el hueso
+-- con el nombre de la capa (el vínculo hueso<->capa es por nombre).
+local function bind_existing_layer()
+	if selected_node == nil then
+		app.alert(L.err_sel_bone)
+		return
+	end
+	local layer = app.activeLayer
+	if not layer or not layer.isImage or layer.name == sk_layer_name then
+		app.alert(L.err_src_region)
+		return
+	end
+	local cel = layer:cel(1)
+	if not cel or not cel.image then
+		app.alert(L.err_src_image)
+		return
+	end
+	-- Renombrar el hueso al nombre de la capa (unicidad, salvo que ya coincida).
+	if layer.name ~= selected_node.name and not ValidNodeName(layer.name, skeleton_tree) then
+		app.alert(L.err_dup_name)
+		return
+	end
+	ensureSkeleton()
+	selected_node.name = layer.name
+	selected_node.image = cel.image:clone()
+	selected_node.bcx = cel.position.x
+	selected_node.bcy = cel.position.y
+	moveSkLayer2Top()
+	local image = bone_layer:cel(1).image
+	image:clear()
+	drawNodeTree(skeleton_tree)
+	dlg:repaint()
+	app.refresh()
+end
+
+-- Crea un hueso por cada capa de imagen del sprite (excepto BoneTree y grupos),
+-- colgando de la raíz. La jerarquía se ajusta luego con "Reparentar".
+local function autodetect_bones()
+	ensureSkeleton()
+	local created = 0
+	for _, layer in ipairs(bone_sprite.layers) do
+		if layer.isImage and not layer.isGroup and layer.name ~= sk_layer_name then
+			-- Saltar si ya existe un hueso con ese nombre.
+			if ValidNodeName(layer.name, skeleton_tree) then
+				local node = add_skeleton_node(skeleton_tree, layer.name)
+				local cel = layer:cel(1)
+				if cel and cel.image then
+					local cx = cel.position.x + math.floor(cel.image.width / 2)
+					local cy = cel.position.y + math.floor(cel.image.height / 2)
+					local pos = GetValidPoint(cx, cy)
+					node.x, node.y = pos.x, pos.y
+					node.bx, node.by = pos.x, pos.y
+					node.image = cel.image:clone()
+					node.bcx = cel.position.x
+					node.bcy = cel.position.y
+				end
+				created = created + 1
+			end
+		end
+	end
+	if created == 0 then
+		app.alert(L.err_no_layers)
+		return
+	end
+	local image = bone_layer:cel(1).image
+	image:clear()
+	drawNodeTree(skeleton_tree)
+	dlg:repaint()
+	app.refresh()
+end
+
+
 
 -- Función recursiva: añade un nodo al árbol de huesos
 function add_skeleton_node(parent, name)
@@ -563,6 +711,7 @@ local function addBoneNode()
 		return
 	end
 	local newnode = add_skeleton_node(selected_node,boneName)
+	ensureSkeleton()
 	dlg:repaint()
 	dlg:repaint()
 	local image = bone_layer:cel(1).image
@@ -748,6 +897,7 @@ local function rmBoneChildNode()
 		return
 	end
 
+	ensureSkeleton()
 	local clickButton = nil
 
 	local comfirmDlg = Dialog(string.format(L.delete_title, selected_node.name))
@@ -991,6 +1141,7 @@ local function delayed_restart()
 
 
 local function edit_start()
+	ensureSkeleton()
 	if bone_sprite == nil then
 	   app.alert(L.err_no_sprite)
 	   return
@@ -1398,6 +1549,7 @@ end
 
 
 local function createFrame()
+    ensureSkeleton()
     if not bone_sprite then
 	   app.alert(L.err_no_sprite2)
 	return
@@ -1461,7 +1613,7 @@ local function open_file_dialog()
 		           selected_size.width = math.floor(root.sprite_width)
 		           selected_size.height = math.floor(root.sprite_height)
 				   selected_size.label = selected_size.width .. "x" .. selected_size.height
-		           create_skeleton_sprite()
+		           ensureSkeleton()
 	               local image = bone_layer:cel(1).image
 	               image:clear()
                    drawNodeTree(skeleton_tree)
@@ -1540,6 +1692,44 @@ function createDiaglog()
 								 UpdateState(state_Add_bone_skin)
 								 --moveSkLayer2Top()
 								 end }
+	dlg:button{id="bindLayer", text=L.bind_layer, onclick=function()
+	                             bind_existing_layer()
+								 UpdateState(state_Add_bone_skin)
+								 end }
+	dlg:button{id="autodetect", text=L.autodetect, onclick=function()
+	                             autodetect_bones()
+								 UpdateState(state_Add_bone_skin)
+								 end }
+	dlg:button{id="reparent", text=L.reparent, onclick=function()
+			if selected_node == nil then
+				app.alert(L.err_sel_bone)
+				return
+			end
+			if selected_node.parent == nil then
+				app.alert(L.err_no_root_delete)
+				return
+			end
+			local candidates = {}
+			collectParentCandidates(skeleton_tree, selected_node, candidates)
+			if #candidates == 0 then return end
+			local reDlg = Dialog{title=string.format(L.reparent_title, selected_node.name), parent=dlg}
+			reDlg:combobox{id="newParent", label=L.parent_label, option=selected_node.parent.name, options=candidates}
+			reDlg:button{id="ok", text=L.ok, onclick=function()
+				local target = findNodeByName(skeleton_tree, reDlg.data.newParent)
+				if target then
+					reparentNode(selected_node, target)
+					ensureSkeleton()
+					local image = bone_layer:cel(1).image
+					image:clear()
+					drawNodeTree(skeleton_tree)
+					dlg:repaint()
+					app.refresh()
+				end
+				reDlg:close()
+			end}
+			reDlg:button{id="cancel", text=L.cancel, onclick=function() reDlg:close() end}
+			reDlg:show()
+			end }
 	dlg:button{id="editPose", text=L.move_node, onclick=function()
 	            withSkin = true
 	            UpdateState(state_pose)
@@ -1707,9 +1897,8 @@ skeleton_tree.y = math.floor(selected_size.height / 2)
 skeleton_tree.bx = skeleton_tree.x
 skeleton_tree.by = skeleton_tree.y
 selected_node = skeleton_tree
-create_skeleton_sprite()
+-- Creación diferida: no tocamos el sprite al abrir. La capa BoneTree y el dibujo
+-- del árbol se generan con ensureSkeleton() en la primera acción del usuario. El
+-- árbol se ve igualmente en el canvas del diálogo (draw_skeleton), independiente
+-- del sprite.
 createDiaglog()
-local image = bone_layer:cel(1).image
-image:clear()
-drawNodeTree(skeleton_tree)
-app.refresh()
