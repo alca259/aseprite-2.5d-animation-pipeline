@@ -1,53 +1,110 @@
 # 🚀 Aseprite 2.5D Animation Pipeline
 
-Un pipeline de animación técnica y renderizado avanzado para Aseprite escrito en **Lua puro, monolítico y sin dependencias externas**. Diseñado para desarrolladores de videojuegos independientes que necesitan conectar el arte 2D con la iluminación y físicas dinámicas de motores modernos (Godot, Unity, Defold) sin pagar licencias comerciales de software cerrado.
-> 💡 **Nota:** Estos scripts no buscan reemplazar a las extensiones existentes. Se han hecho para que funcionen y sean gratuitos, aunque la interfaz no sea tan bonita como si fuese una extensión o una aplicación de terceros.
+Tres scripts de **Lua puro para Aseprite** (sin dependencias, sin compilar nada) para animar sprites y prepararlos para iluminación dinámica en motores como Godot, Unity o Defold.
+
+- 🧬 **Skeleton2Animation** — anima por huesos (esqueleto jerárquico).
+- 🔄 **Tween** — interpola movimiento, giro, escala y color entre poses.
+- 💡 **NormalMap** — genera mapas de normales para luces 2.5D.
+
+> 💡 **Nota:** no pretenden reemplazar a las extensiones de pago. Son gratuitos y funcionan; la interfaz es funcional, no bonita.
 
 ---
 
-## 🛠️ Contenido del Pipeline
+## ✅ Requisitos
 
-El ecosistema se compone de tres herramientas premium que trabajan en perfecta armonía:
-
-### 1. 🧬 Skeleton2Animation.lua (Animación por Esqueleto)
-* **Cinemática Jerárquica:** Crea estructuras de huesos (padre-hijo) para articular extremidades.
-* **Separación de Rest Pose:** Captura el estado en reposo de la piel y el hueso de forma independiente para evitar deformaciones infinitas.
-* **Persistencia Integrada:** Guarda las poses jerárquicas en formato JSON.
-
-### 1. 🔄 Tween.lua (Motor de Interpolación Afín Avanzado)
-* **Matriz Afín 3x3 Combinada:** Calcula Traslación, Rotación y Escala en un solo paso por píxel usando mapeo inverso (*Nearest-Neighbor*).
-* **Rendimiento Óptimo:** Procesa un `cel.bounds` dinámico proyectado. Solo calcula el área mínima del dibujo, ignorando el lienzo vacío (ahorra un 90% de CPU frente a herramientas comerciales que agrandan el lienzo).
-* **Físicas Orgánicas:** *Squash & Stretch* automatizado acoplado a la velocidad del movimiento con conservación matemática estricta del volumen.
-* **Color HSLA Puro:** Interpolación de color basada en el arco más corto (`lerpHue`). Evita los tonos grises y sucios de la mezcla RGB estándar al transicionar entre colores opuestos.
-* **Hot Update (Actualización en caliente):** Guarda los parámetros en los metadatos de la capa (`layer.properties.tween`) para recalcular movimientos en caliente sin destruir tu flujo de trabajo.
-
-### 3. 💡 NormalMap.lua (Generador de Mapas de Normales)
-* **Iluminación 2.5D Real:** Genera mapas de normales codificados en vectores estándar (RGB/XYZ) para que tus sprites reaccionen a luces dinámicas en motores de juego.
-* **Biselado de Doble Paso:** Analiza bordes con un espesor adaptativo de 2 píxeles para lograr relieves suaves y realistas, evitando aristas afiladas.
-* **Mutación In-Place Segura:** Optimizado para la RAM del sistema mediante el análisis estricto del canal Alfa.
+- **Aseprite** con soporte de scripts (menú `Archivo > Scripts`).
+- **Tween** y **NormalMap** trabajan **solo en modo de color RGB** (`Sprite > Modo de color > RGB`).
+- Los `.lua` deben guardarse en **UTF-8 sin BOM** (Aseprite no ejecuta scripts con BOM).
 
 ---
 
-## ⚙️ Instalación Rápida
+## ⚙️ Instalación
 
-No necesitas compilar extensiones en C++ ni gestionar carpetas complejas:
-
-1. Descarga los archivos `.lua` de la carpeta `scripts/`.
-2. En Aseprite, ve al menú superior: **Archivo > Scripts > Abrir carpeta de scripts**.
-3. Arrastra los archivos descargados a esa carpeta.
-4. Reinicia Aseprite o pulsa `F5` para recargar la lista de scripts. ¡Listo!
+1. Descarga los `.lua` de la carpeta [`scripts/`](scripts/).
+2. En Aseprite: **Archivo > Scripts > Abrir carpeta de scripts**.
+3. Copia los archivos en esa carpeta.
+4. Vuelve a **Archivo > Scripts** y pulsa **Recargar scripts** (o `F5`). Ejecuta cada uno desde ese mismo menú.
 
 ---
 
-## 🗺️ Flujo de Trabajo Recomendado (Pipeline 2.5D)
+## 🧬 1. Skeleton2Animation.lua — Animación por huesos
 
-1. **Estructura:** Diseña tu personaje articulado y define su jerarquía con `Skeleton2Animation.lua`.
-2. **Anima:** Genera fotogramas clave o utiliza la potencia matemática de `Tween.lua` para automatizar movimientos fluidos, arcos de trayectoria y rebotes orgánicos con conservación de volumen.
-3. **Ilumina:** Ejecuta `NormalMap.lua` para extraer el volumen de luz de cada fotograma generado.
-4. **Exporta:** Lleva tu hoja de sprites de color y tu hoja de mapas de normales a tu motor de videojuegos favorito y activa las luces 2D dinámicas.
+Monta un esqueleto de huesos padre-hijo sobre tu sprite, vincula cada capa (una extremidad) a un hueso y anima moviendo/rotando huesos. Guarda una **pose base** para volver a ella y exporta las poses a **JSON**.
+
+<!-- 🎬 GIF de demostración -->
+> _(GIF pendiente)_
+
+**Cómo se usa:**
+
+1. Abre tu sprite con cada parte del personaje en **una capa distinta** (p. ej. `Cabeza`, `Cuerpo`, `PataFD`…) y ejecuta el script. Al abrirlo **no** modifica el sprite hasta que hagas algo.
+2. Crea los huesos:
+   - **Autodetectar huesos**: crea un hueso por cada capa de imagen, colgando todos de la raíz.
+   - O manualmente con el nombre + botón **`+`** / **`-`**.
+3. Define la jerarquía con **Reparentar** (elige qué hueso cuelga de cuál).
+4. Vincula la piel al hueso (el match es por **nombre de capa = nombre de hueso**):
+   - **Vincular capa**: asocia la capa activa entera al hueso seleccionado.
+   - **Vincular piel**: recorta la selección activa y crea la piel del hueso.
+   - (Autodetectar ya deja todo vinculado).
+5. Anima:
+   - **Mover nodo**: mueve el hueso y su piel. **Mover solo hueso**: solo el pivote.
+   - Slider de **rotación** (con / sin hijos). Al rotar, el esqueleto se oculta para ver bien la piel; reaparece al soltar o cambiar de modo.
+6. **Crear fotograma**: copia la pose actual a un fotograma nuevo y devuelve el fotograma 1 a la **pose base** para componer el siguiente.
+7. **Restaurar pose base**: devuelve todo al reposo (útil si el deshacer se lía).
+8. **Guardar** / **Cargar**: exporta o importa la pose en JSON. Al cargar, revincula automáticamente cada hueso con su capa homónima.
+
+**Datos:** la pose se guarda en un `.json` con la jerarquía, posiciones y la pose base. La imagen no se guarda ahí: se recupera de las capas por nombre al cargar.
+
+---
+
+## 🔄 2. Tween.lua — Interpolación entre poses
+
+Genera los fotogramas intermedios entre dos poses, o crea el movimiento a partir de una sola. Interpola posición, giro, escala y color, con curvas de recorrido y easing.
+
+<!-- 🎬 GIF de demostración -->
+> _(GIF pendiente)_
+
+**Cómo se usa:**
+
+1. Selecciona la capa a animar (modo RGB) y ejecuta el script.
+2. Elige el **método**:
+   - **Rellenar entre dos poses que ya he dibujado**: indica el fotograma inicial (pose A) y final (pose B); el script calcula el hueco.
+   - **Crear el movimiento desde una sola pose**: partes de una pose y defines los cambios con valores relativos (posición, giro, escala, pivote).
+   - **Actualizar un tween ya generado**: recalcula usando los parámetros guardados en la capa.
+3. Elige la **acción**: mover, fundir (fade) o ambas.
+4. Ajusta **cadencia** (nº de fotogramas, duración, easing) y, si quieres, el **recorrido** (recta / arco / onda / rebote), el **squash & stretch** y el **cambio de color** (interpolado en HSL).
+5. **Aceptar**: genera los fotogramas.
+
+**Recálculo en caliente:** los parámetros se guardan en los metadatos de la capa (`layer.properties.tween`), así que puedes reejecutar con **Actualizar** sin volver a configurarlo todo.
+
+---
+
+## 💡 3. NormalMap.lua — Mapas de normales
+
+Genera un mapa de normales a partir del contorno alfa del dibujo, para que tus sprites reaccionen a luces dinámicas 2.5D en el motor.
+
+<!-- 🎬 GIF de demostración -->
+> _(GIF pendiente)_
+
+**Cómo se usa:**
+
+1. Con el sprite en modo RGB, ejecuta el script.
+2. Elige el **alcance**:
+   - **Capas**: activa / seleccionadas (rango) / todas.
+   - **Fotogramas**: actual / todos.
+3. Ajusta la **intensidad del relieve** (1–63; 32 por defecto).
+4. **Aceptar**: por cada capa de origen crea/reutiliza una capa **`<nombre>_NormalGenerated`** con el mapa de normales.
+
+---
+
+## 🗺️ Flujo recomendado (pipeline 2.5D)
+
+1. **Estructura y anima** con `Skeleton2Animation` (o dibuja poses a mano).
+2. **Rellena/automatiza** los fotogramas intermedios con `Tween`.
+3. **Ilumina**: pasa `NormalMap` sobre los fotogramas para generar sus normales.
+4. **Exporta** la hoja de color y la de normales a tu motor y activa las luces 2D dinámicas.
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto está bajo la **Licencia MIT**. Siéntete libre de usarlo, modificarlo y distribuirlo de forma totalmente gratuita, tanto para proyectos personales como para videojuegos comerciales. Hecho por y para desarrolladores independientes.
+Proyecto bajo **Licencia MIT** ([LICENSE](LICENSE)): úsalo, modifícalo y distribúyelo gratis, en proyectos personales o comerciales.
