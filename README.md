@@ -54,6 +54,8 @@ Monta un esqueleto de huesos padre-hijo sobre tu sprite, vincula cada capa (una 
 
 **Datos:** la pose se guarda en un `.json` con la jerarquía, posiciones y la pose base. La imagen no se guarda ahí: se recupera de las capas por nombre al cargar.
 
+**Origen:** basado en el [Skeleton2Animation de **aimarzhang**](https://aimarzhang.itch.io/skeleton2animation-in-aseprite/devlog/943953/skeleton2animation-in-aseprite), muy modificado y adaptado (corrigiendo bastantes bugs por el camino).
+
 ---
 
 ## 🔄 2. Tween.lua — Interpolación entre poses
@@ -76,6 +78,8 @@ Genera los fotogramas intermedios entre dos poses, o crea el movimiento a partir
 
 **Recálculo en caliente:** los parámetros se guardan en los metadatos de la capa (`layer.properties.tween`), así que puedes reejecutar con **Actualizar** sin volver a configurarlo todo.
 
+**Origen:** desarrollo propio, inspirado en **The Tween Machine** (CarbsCode) y **Tweencel** (devkidd).
+
 ---
 
 ## 💡 3. NormalMap.lua — Mapas de normales
@@ -93,6 +97,8 @@ Genera un mapa de normales a partir del contorno alfa del dibujo, para que tus s
    - **Fotogramas**: actual / todos.
 3. Ajusta la **intensidad del relieve** (1–63; 32 por defecto).
 4. **Aceptar**: por cada capa de origen crea/reutiliza una capa **`<nombre>_NormalGenerated`** con el mapa de normales.
+
+**Origen:** basado en el [gist de **ruccho**](https://gist.github.com/ruccho/2d1eb4aea3dfa55690c2ddc4419172ff), modificado y adaptado.
 
 ---
 
