@@ -1666,7 +1666,7 @@ local function open_file_dialog()
     id = "open_path",
     label = L.open_label,
     title = L.open_file_title,
-	filename = "load_pose_file",
+	filename = "my_pose_file",
     open = true,
     filetypes = {"json"},
   }
@@ -1719,7 +1719,7 @@ local function save_file_dialog()
     id = "save_file",
     label = L.save_label,
     title = L.save_file_title,
-	filename = "save_pose_data.json",
+	filename = "my_pose_file",
     save = true,
     filetypes = {"json"},
   }
