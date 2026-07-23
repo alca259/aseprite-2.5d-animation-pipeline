@@ -7,7 +7,7 @@
 --- capa de origen, reutilizandola si ya existe
 ---
 --- Solo funciona en modo de color RGB
---- Originalmente este script era de alguien, pero no lo recuerdo y no lo encuentro en internet, así que lo he modificado y adaptado para mi uso personal
+--- Originalmente este script era ruccho, pero lo he modificado y adaptado para mi uso personal
 
 local SUFFIX = "_NormalGenerated"
 
